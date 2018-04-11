@@ -42,7 +42,7 @@ def fg(model, x, y, mag_list, target=True, mask=None):
         print(np.linalg.norm(grad))
 
         # Apply mask
-        if mask is not None:
+        if mask:
             mask_rep = np.repeat(mask[i, :, :, np.newaxis], N_CHANNEL, axis=2)
             grad *= mask_rep
 
@@ -67,8 +67,8 @@ def fg(model, x, y, mag_list, target=True, mask=None):
     return x_adv
 
 
-def iterative(model, x, y, norm="2", n_step=20, step_size=0.05, target=True,
-              mask=None):
+def iterative(model, x, y, grad_fn=None, norm="2", n_step=20, step_size=0.05,
+              target=True, mask=None):
     """
     Iterative attack. Move a benign sample in the gradient direction one small
     step at a time for <n_step> times. Clip values after each step.
@@ -101,18 +101,19 @@ def iterative(model, x, y, norm="2", n_step=20, step_size=0.05, target=True,
     """
 
     x_adv = np.zeros(x.shape, dtype=np.float32)
-    grad_fn = gradient_fn(model)
+    if not grad_fn:
+        grad_fn = gradient_fn(model)
     start_time = time.time()
 
     for i, x_in in enumerate(x):
 
         x_cur = np.copy(x_in)
         # Get mask with the same shape as gradient
-        if mask is not None:
+        if mask:
             mask_rep = np.repeat(mask[i, :, :, np.newaxis], N_CHANNEL, axis=2)
         # Start update in steps
         for _ in range(n_step):
-            if target is not None:
+            if target:
                 grad = -1 * gradient_input(grad_fn, x_cur, y[i])
             else:
                 grad = gradient_input(grad_fn, x_cur, y[i])
@@ -128,7 +129,7 @@ def iterative(model, x, y, norm="2", n_step=20, step_size=0.05, target=True,
                 raise ValueError("Invalid norm!")
 
             # Apply mask
-            if mask is not None:
+            if mask:
                 grad *= mask_rep
 
             x_cur += grad * step_size
@@ -207,7 +208,7 @@ def fg_transform(model, x, y, mag_list, target=True, mask=None,
             grad /= batch_size
 
         # Apply mask
-        if mask is not None:
+        if mask:
             mask_rep = np.repeat(mask[i, :, :, np.newaxis], N_CHANNEL, axis=2)
             grad *= mask_rep
 
@@ -260,11 +261,11 @@ def iter_transform(model, x, y, norm="2", n_step=20, step_size=0.05,
         factors.append(rnd_enhance.get_last_factors())
 
     # Get mask with the same shape as gradient
-    if mask is not None:
+    if mask:
         mask_rep = np.repeat(mask[:, :, np.newaxis], N_CHANNEL, axis=2)
     # Start update in steps
     for _ in range(n_step):
-        if target is not None:
+        if target:
             # Sum gradient over the entire batch of transformed images
             grad = -1 * gradient_input(grad_fn, x_adv, y)
             for i in range(batch_size - 1):
@@ -293,7 +294,7 @@ def iter_transform(model, x, y, norm="2", n_step=20, step_size=0.05,
             raise ValueError("Invalid norm!")
 
         # Apply mask
-        if mask is not None:
+        if mask:
             grad *= mask_rep
 
         x_adv += grad * step_size
@@ -308,8 +309,8 @@ def iter_transform(model, x, y, norm="2", n_step=20, step_size=0.05,
     return x_adv, np.array(losses)
 
 
-def rnd_pgd(model, x, y, norm="2", n_step=40, step_size=0.01, target=True,
-            mask=None, init_rnd=0.1):
+def rnd_pgd(model, x, y, grad_fn=None, norm="2", n_step=40, step_size=0.01,
+            target=True, mask=None, init_rnd=0.1):
     """
     Projected gradient descent started with a random point in a ball centered
     around real data point.
@@ -334,7 +335,7 @@ def rnd_pgd(model, x, y, norm="2", n_step=40, step_size=0.01, target=True,
 
         x_rnd[i] = np.clip(x_cur + init_rnd * epsilon, 0, 1)
 
-    return iterative(model, x_rnd, y, norm, n_step, step_size, target, mask)
+    return iterative(model, x_rnd, y, grad_fn, norm, n_step, step_size, target, mask)
 
 
 def s_pgd(model, x, y, norm="2", n_step=40, step_size=0.01, target=True,
@@ -344,7 +345,7 @@ def s_pgd(model, x, y, norm="2", n_step=40, step_size=0.01, target=True,
     """
 
     x_adv = np.zeros_like(x)
-    if grad_fn is None:
+    if not grad_fn:
         grad_fn = gradient_fn(model)
     start_time = time.time()
 
@@ -352,7 +353,7 @@ def s_pgd(model, x, y, norm="2", n_step=40, step_size=0.01, target=True,
 
         x_cur = np.copy(x_in)
         # Get mask with the same shape as gradient
-        if mask is not None:
+        if mask:
             mask_rep = np.repeat(mask[i, :, :, np.newaxis], N_CHANNEL, axis=2)
 
         y_cls = np.argmax(y[i])
@@ -360,7 +361,7 @@ def s_pgd(model, x, y, norm="2", n_step=40, step_size=0.01, target=True,
         for _ in range(n_step):
 
             # Get gradient
-            if target is not None:
+            if target:
                 grad = -1 * gradient_input(grad_fn, x_cur, y[i])
             else:
                 grad = gradient_input(grad_fn, x_cur, y[i])
@@ -382,7 +383,7 @@ def s_pgd(model, x, y, norm="2", n_step=40, step_size=0.01, target=True,
                 raise ValueError("Invalid norm!")
 
             # Apply mask
-            if mask is not None:
+            if mask:
                 grad *= mask_rep
                 epsilon += mask_rep
 
@@ -392,7 +393,7 @@ def s_pgd(model, x, y, norm="2", n_step=40, step_size=0.01, target=True,
 
             if early_stop:
                 # Stop when sample becomes adversarial
-                if target is not None:
+                if target:
                     if predict(model, x_cur) == y_cls:
                         break
                 else:

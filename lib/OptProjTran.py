@@ -328,7 +328,6 @@ class OptProjTran:
                 tanhw = np.clip(x_ * 2 - 1, -1 + EPS, 1 - EPS)
                 init_w = np.arctanh(tanhw) + init_rand
                 self.w.load(init_w)
-                # self.w.load(init_rand)
 
             # Set up some variables for early stopping
             min_norm = float("inf")
