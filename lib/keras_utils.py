@@ -1,5 +1,5 @@
 import keras
-from keras.layers import Conv2D, Dense, Dropout, Flatten, MaxPooling2D
+from keras.layers import Conv2D, Dense, Dropout, Flatten, MaxPooling2D, Lambda
 from keras.layers.convolutional import Convolution2D, MaxPooling2D
 from keras.layers.core import Activation, Dense, Dropout, Flatten
 from keras.layers.normalization import BatchNormalization
@@ -10,8 +10,8 @@ from parameters import *
 
 
 def output_fn(correct, predicted):
-    return tf.nn.softmax_cross_entropy_with_logits(labels=correct,
-                                                   logits=predicted)
+    return tf.nn.softmax_cross_entropy_with_logits_v2(labels=correct,
+                                                      logits=predicted)
 
 
 def build_mltscl_gtsrb():
@@ -130,13 +130,136 @@ def build_cnn_mnist():
     return model
 
 
+def build_cnn_mnist_2cls():
+
+    model = Sequential()
+    model.add(Conv2D(32, kernel_size=(3, 3),
+                     activation='relu',
+                     input_shape=(28, 28, 1)))
+    model.add(Conv2D(64, (3, 3), activation='relu'))
+    model.add(MaxPooling2D(pool_size=(2, 2)))
+    model.add(Dropout(0.25))
+    model.add(Flatten())
+    model.add(Dense(128, activation='relu'))
+    model.add(Dropout(0.5))
+    model.add(Dense(2, activation='linear'))
+
+    model.compile(loss=output_fn, optimizer=keras.optimizers.Adadelta(),
+                  metrics=['accuracy'])
+
+    return model
+
+#------------------------------- F-MNIST Model --------------------------------#
+
+
+def build_vgg_fmnist(mean, std):
+    """
+    Code borrowed from
+    http://danialk.github.io/blog/2017/09/29/range-of-convolutional
+    -neural-networks-on-fashion-mnist-dataset/
+    """
+    def norm_input(x): return (x - mean) / std
+
+    cnn = Sequential([
+        Lambda(norm_input, input_shape=(28, 28, 1)),
+        Conv2D(32, kernel_size=(3, 3), activation='relu',
+               padding='same', input_shape=(28, 28, 1)),
+        Conv2D(32, kernel_size=(3, 3), activation='relu', padding='same'),
+        BatchNormalization(),
+        Dropout(0.25),
+
+        Conv2D(64, kernel_size=(3, 3), activation='relu', padding='same'),
+        Conv2D(64, kernel_size=(3, 3), activation='relu', padding='same'),
+        MaxPooling2D(pool_size=(2, 2)),
+        Dropout(0.25),
+
+        Conv2D(128, kernel_size=(3, 3), activation='relu', padding='same'),
+        Conv2D(128, kernel_size=(3, 3), activation='relu', padding='same'),
+        BatchNormalization(),
+        Dropout(0.25),
+
+        Conv2D(256, kernel_size=(3, 3), activation='relu', padding='same'),
+        Conv2D(256, kernel_size=(3, 3), activation='relu', padding='same'),
+        Conv2D(256, kernel_size=(3, 3), activation='relu', padding='same'),
+        MaxPooling2D(pool_size=(2, 2)),
+
+        Flatten(),
+
+        Dense(512, activation='relu'),
+        BatchNormalization(),
+        Dropout(0.5),
+        Dense(512, activation='relu'),
+        BatchNormalization(),
+        Dropout(0.5),
+        Dense(10, activation='softmax')
+    ])
+
+    cnn.compile(loss='sparse_categorical_crossentropy',
+                optimizer=keras.optimizers.Adam(lr=0.0001),
+                metrics=['accuracy'])
+
+    return cnn
+
+
+#-------------------------- Model for synthetic data --------------------------#
+
+def build_dnn_baseline(d):
+
+    model = Sequential()
+    model.add(Dense(1000, input_dim=d, activation='relu'))
+    model.add(BatchNormalization())
+    model.add(Dense(1000, activation='relu'))
+    model.add(BatchNormalization())
+    model.add(Dense(2, activation='linear'))
+    model.compile(loss=output_fn,
+                  optimizer=keras.optimizers.Adam(lr=1e-4),
+                  metrics=['accuracy'])
+    return model
+
+
+def build_dnn_wd(d, width, depth):
+
+    assert depth >= 1
+    assert width >= 1
+
+    model = Sequential()
+    model.add(Dense(width, input_dim=d, activation='relu'))
+    model.add(BatchNormalization())
+    for _ in range(depth - 1):
+        model.add(Dense(width, activation='relu'))
+        model.add(BatchNormalization())
+    model.add(Dense(2, activation='linear'))
+    model.compile(loss=output_fn,
+                  optimizer=keras.optimizers.Adam(lr=1e-4),
+                  metrics=['accuracy'])
+    return model
+
+
+def build_dnn_dropout(d):
+
+    model = Sequential()
+    model.add(Dense(1000, input_dim=d, activation='relu'))
+    model.add(BatchNormalization())
+    model.add(Dropout(0.5))
+    model.add(Dense(1000, activation='relu'))
+    model.add(BatchNormalization())
+    model.add(Dropout(0.5))
+    # model.add(Dense(1000, activation='relu'))
+    # model.add(BatchNormalization())
+    model.add(Dense(2, activation='linear'))
+    model.compile(loss=output_fn,
+                  optimizer=keras.optimizers.Adam(lr=1e-4),
+                  metrics=['accuracy'])
+    return model
+
 #---------------------------------- Utility -----------------------------------#
 
 
 def gradient_model(model):
     """Return gradient function of model's loss w.r.t. input"""
 
-    y_true = K.placeholder(shape=(OUTPUT_DIM, ))
+    outdim = model.output.get_shape()[1].value
+    y_true = K.placeholder(shape=(outdim, ))
     loss = model.loss_functions[0](y_true, model.output)
     grad = K.gradients(loss, model.input)
 
@@ -146,8 +269,9 @@ def gradient_model(model):
 def gradient_fn(model):
     """Return gradient function of cross entropy loss w.r.t. input"""
 
-    y_true = K.placeholder(shape=(OUTPUT_DIM, ))
-    loss = tf.nn.softmax_cross_entropy_with_logits(
+    outdim = model.output.get_shape()[1].value
+    y_true = K.placeholder(shape=(outdim, ))
+    loss = tf.nn.softmax_cross_entropy_with_logits_v2(
         labels=y_true, logits=model.output)
     grad = K.gradients(loss, model.input)
 

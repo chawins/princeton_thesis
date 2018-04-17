@@ -201,7 +201,7 @@ class OptCarlini:
             if self.var_change:
                 # Initialize w = arctanh( 2(x + noise) - 1 )
                 init_rand = np.random.normal(
-                    -self.init_scl, self.init_scl, size=INPUT_SHAPE)
+                    0, self.init_scl, size=INPUT_SHAPE)
                 # Clip values to remove numerical error atanh(1) or atanh(-1)
                 tanh_w = np.clip((x_ + init_rand) * 2 - 1, -1 + EPS, 1 - EPS)
                 self.w.load(np.arctanh(tanh_w))

@@ -9,6 +9,8 @@ save*
 nohup*
 fig/
 tmp/
+tmp*
+data/
 
 # OS generated files #
 ######################

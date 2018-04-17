@@ -309,20 +309,18 @@ def iter_transform(model, x, y, norm="2", n_step=20, step_size=0.05,
     return x_adv, np.array(losses)
 
 
-def rnd_pgd(model, x, y, grad_fn=None, norm="2", n_step=40, step_size=0.01,
-            target=True, mask=None, init_rnd=0.1):
+def PGD(model, x, y, grad_fn=None, norm="2", n_step=40, step_size=0.05,
+        target=True, init_rnd=0.1):
     """
-    Projected gradient descent started with a random point in a ball centered
-    around real data point.
+    PGD attack with random start
     """
 
-    x_rnd = np.zeros_like(x)
+    x_adv = np.zeros_like(x)
+    y_cat = keras.utils.to_categorical(y)
+    xshape = (1,) + x[0].shape
 
     for i, x_cur in enumerate(x):
-
-        # Find a random point in a ball centered at given data point
-        h, w, c = x_cur.shape
-        epsilon = np.random.rand(h, w, c) - 0.5
+        epsilon = np.random.uniform(size=x_cur.shape) - 0.5
         if norm == "2":
             try:
                 epsilon /= np.linalg.norm(epsilon)
@@ -333,9 +331,44 @@ def rnd_pgd(model, x, y, grad_fn=None, norm="2", n_step=40, step_size=0.01,
         else:
             raise ValueError("Invalid norm!")
 
-        x_rnd[i] = np.clip(x_cur + init_rnd * epsilon, 0, 1)
+        x_adv[i] = x_cur + init_rnd * epsilon
 
-    return iterative(model, x_rnd, y, grad_fn, norm, n_step, step_size, target, mask)
+    if not grad_fn:
+        grad_fn = gradient_fn(model)
+    start_time = time.time()
+
+    for i, x_in in enumerate(x_adv):
+        # print(i)
+        x_cur = np.copy(x_in)
+        # Start update in steps
+        for _ in range(n_step):
+            grad = grad_fn([x_in.reshape(xshape), y_cat[i], 0])[0][0]
+            if target:
+                grad *= -1
+            if norm == "2":
+                try:
+                    grad /= np.linalg.norm(grad)
+                except ZeroDivisionError:
+                    raise
+            elif norm == "inf":
+                grad = np.sign(grad)
+            else:
+                raise ValueError("Invalid norm!")
+
+            x_cur += grad * step_size
+            # loss = model.evaluate(
+            #     x_cur[np.newaxis], y_cat[i, np.newaxis], verbose=0)[0]
+            # print(loss)
+
+        x_adv[i] = np.copy(x_cur)
+
+        # Progress printing
+        if (i % 200 == 0) and (i > 0):
+            elasped_time = time.time() - start_time
+            print("Finished {} samples in {:.2f}s.".format(i, elasped_time))
+            start_time = time.time()
+
+    return x_adv
 
 
 def s_pgd(model, x, y, norm="2", n_step=40, step_size=0.01, target=True,

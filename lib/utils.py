@@ -1,10 +1,11 @@
+import pandas as pd
+from keras.datasets import mnist
 from lib.keras_utils import *
+from lib.RandomEnhance import *
+from lib.RandomTransform import *
 from parameters import *
 from scipy import ndimage as ndi
 from skimage.feature import canny
-
-from lib.RandomEnhance import *
-from lib.RandomTransform import *
 
 # Threshold for checking mask area
 MASK_THRES_MIN = 0.1
@@ -209,6 +210,45 @@ def load_dataset_GTSRB(n_channel=3, train_file_name=None):
     x_val = preprocess(x_val, n_channel)
     x_test = preprocess(x_test, n_channel)
     return x_train, y_train, x_val, y_val, x_test, y_test
+
+
+def load_dataset_mnist():
+    """Load MNIST. Rescale to [0, 1]"""
+
+    (x_train, y_train), (x_test, y_test) = mnist.load_data()
+
+    x_train = x_train[:, :, :, np.newaxis]
+    x_test = x_test[:, :, :, np.newaxis]
+    x_train = x_train.astype('float32') / 255
+    x_test = x_test.astype('float32') / 255
+    y_train = y_train.astype('int32')
+    y_test = y_test.astype('int32')
+
+    return x_train, y_train, x_test, y_test
+
+
+def load_dataset_fmnist():
+    """
+    Load Fashion MNIST dataset into numpy arrays. Rescale to [0, 1]
+    Code borrowed from 
+    https://www.kaggle.com/eralpozcan/first-kernel-f-mnist-with-keras
+    """
+    fmnist_path = './data/f-mnist/'
+
+    df_train = pd.read_csv(fmnist_path + 'fashion-mnist_train.csv')
+    df_test = pd.read_csv(fmnist_path + 'fashion-mnist_test.csv')
+
+    x_train = np.array(df_train.iloc[:, 1:])
+    y_train = np.array(df_train.iloc[:, 0])
+    x_test = np.array(df_test.iloc[:, 1:])
+    y_test = np.array(df_test.iloc[:, 0])
+
+    x_train = x_train.reshape(x_train.shape[0], 28, 28, 1)
+    x_test = x_test.reshape(x_test.shape[0], 28, 28, 1)
+    x_train = x_train.astype('float32') / 255
+    x_test = x_test.astype('float32') / 255
+
+    return x_train, y_train, x_test, y_test
 
 
 def filter_samples(model, x, y, y_target=None):
