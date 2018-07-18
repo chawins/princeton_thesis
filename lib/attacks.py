@@ -310,20 +310,22 @@ def iter_transform(model, x, y, norm="2", n_step=20, step_size=0.05,
 
 
 def PGD(model, x, y, grad_fn=None, norm="2", n_step=40, step_size=0.05,
-        target=True, init_rnd=0.1):
+        target=True, init_rnd=0.1, proj=None, early_stop=False):
     """
     PGD attack with random start
     """
 
+    EPS = 1e-6
     x_adv = np.zeros_like(x)
     y_cat = keras.utils.to_categorical(y)
     xshape = (1,) + x[0].shape
+    norm_x = np.linalg.norm(x, axis=1)
 
     for i, x_cur in enumerate(x):
         epsilon = np.random.uniform(size=x_cur.shape) - 0.5
         if norm == "2":
             try:
-                epsilon /= np.linalg.norm(epsilon)
+                epsilon /= (np.linalg.norm(epsilon) + EPS)
             except ZeroDivisionError:
                 raise
         elif norm == "inf":
@@ -338,7 +340,7 @@ def PGD(model, x, y, grad_fn=None, norm="2", n_step=40, step_size=0.05,
     start_time = time.time()
 
     for i, x_in in enumerate(x_adv):
-        # print(i)
+
         x_cur = np.copy(x_in)
         # Start update in steps
         for _ in range(n_step):
@@ -347,18 +349,26 @@ def PGD(model, x, y, grad_fn=None, norm="2", n_step=40, step_size=0.05,
                 grad *= -1
             if norm == "2":
                 try:
-                    grad /= np.linalg.norm(grad)
+                    grad /= (np.linalg.norm(grad) + EPS)
                 except ZeroDivisionError:
                     raise
             elif norm == "inf":
                 grad = np.sign(grad)
             else:
                 raise ValueError("Invalid norm!")
-
+            # print(grad)
             x_cur += grad * step_size
-            # loss = model.evaluate(
-            #     x_cur[np.newaxis], y_cat[i, np.newaxis], verbose=0)[0]
-            # print(loss)
+            if proj == 'img':
+                x_cur = np.clip(x_cur, 0, 1)
+            elif proj == 'l2':
+                x_cur = x_cur / np.linalg.norm(x_cur) * norm_x[i]
+
+            if early_stop:
+                out = model.predict(x_cur[np.newaxis], verbose=0)[0]
+                if np.argmax(out) == y[i] and target:
+                    break
+                if np.argmax(out) != y[i] and not target:
+                    break
 
         x_adv[i] = np.copy(x_cur)
 

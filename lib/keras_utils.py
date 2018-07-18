@@ -1,10 +1,11 @@
 import keras
 from keras.layers import Conv2D, Dense, Dropout, Flatten, MaxPooling2D, Lambda
 from keras.layers.convolutional import Convolution2D, MaxPooling2D
-from keras.layers.core import Activation, Dense, Dropout, Flatten
+from keras.layers.core import Activation, Dense, Dropout, Flatten, Reshape
 from keras.layers.normalization import BatchNormalization
 from keras.models import Sequential
 from parameters import *
+from keras import regularizers
 
 #-------------------------------- GTSRB Model ---------------------------------#
 
@@ -110,21 +111,94 @@ def build_cnn_gtsrb():
 #-------------------------------- MNIST Model ---------------------------------#
 
 
-def build_cnn_mnist():
+def build_cnn_mnist(reg=None, lamda=0):
+
+    if reg == 'l2':
+        regularizer = regularizers.l2(lamda)
+    elif reg == 'l1':
+        regularizer = regularizers.l1(lamda)
+    else:
+        regularizer = None
 
     model = Sequential()
     model.add(Conv2D(32, kernel_size=(3, 3),
                      activation='relu',
-                     input_shape=(28, 28, 1)))
-    model.add(Conv2D(64, (3, 3), activation='relu'))
+                     input_shape=(28, 28, 1),
+                     kernel_regularizer=regularizer))
+    model.add(Conv2D(64, (3, 3), activation='relu',
+                     kernel_regularizer=regularizer))
     model.add(MaxPooling2D(pool_size=(2, 2)))
     model.add(Dropout(0.25))
     model.add(Flatten())
-    model.add(Dense(128, activation='relu'))
+    model.add(Dense(128, activation='relu', kernel_regularizer=regularizer))
     model.add(Dropout(0.5))
-    model.add(Dense(10, activation='linear'))
+    model.add(Dense(10, activation='linear', kernel_regularizer=regularizer))
 
-    model.compile(loss=output_fn, optimizer=keras.optimizers.Adadelta(),
+    model.compile(loss=output_fn, optimizer=keras.optimizers.Adam(lr=1e-4),
+                  metrics=['accuracy'])
+
+    return model
+
+
+def build_dnn_mnist(d, width, depth, reg=None, lamda=0):
+
+    assert depth >= 1
+    assert width >= 1
+
+    if reg == 'l2':
+        regularizer = regularizers.l2(lamda)
+    elif reg == 'l1':
+        regularizer = regularizers.l1(lamda)
+    else:
+        regularizer = None
+
+    model = Sequential()
+    model.add(Reshape((784,), input_shape=(28, 28, 1)))
+    for _ in range(depth):
+        model.add(Dense(width, activation='relu',
+                        kernel_regularizer=regularizer))
+        model.add(Dropout(0.5))
+    model.add(Dense(10, activation='linear', kernel_regularizer=regularizer))
+    model.compile(loss=output_fn,
+                  optimizer=keras.optimizers.Adam(lr=1e-4),
+                  metrics=['accuracy'])
+    return model
+
+
+def build_cnn_mnist_2(reg=None, lamda=0):
+    """From Ensemble adversarial training: Attacks and defenses"""
+
+    # model = Sequential()
+    # model.add(Dropout(0.25, input_shape=(28, 28, 1)))
+    # model.add(Conv2D(64, (8, 8), activation='relu'))
+    # model.add(Conv2D(128, (6, 6), activation='relu'))
+    # model.add(Conv2D(128, (5, 5), activation='relu'))
+    # model.add(Dropout(0.5))
+    # model.add(Flatten())
+    # model.add(Dense(10, activation='linear'))
+
+    if reg == 'l2':
+        regularizer = regularizers.l2(lamda)
+    elif reg == 'l1':
+        regularizer = regularizers.l1(lamda)
+    else:
+        regularizer = None
+
+    model = Sequential()
+    model.add(Conv2D(128, kernel_size=(3, 3),
+                     activation='relu',
+                     input_shape=(28, 28, 1),
+                     kernel_regularizer=regularizer))
+    model.add(Conv2D(256, (3, 3), activation='relu',
+                     kernel_regularizer=regularizer))
+    model.add(MaxPooling2D(pool_size=(2, 2)))
+    model.add(Dropout(0.25))
+    model.add(Flatten())
+    model.add(Dense(512, activation='relu', kernel_regularizer=regularizer))
+    model.add(Dropout(0.5))
+    model.add(Dense(10, activation='linear', kernel_regularizer=regularizer))
+
+    model.compile(loss=output_fn, optimizer=keras.optimizers.Adam(lr=1e-4),
                   metrics=['accuracy'])
 
     return model
@@ -217,7 +291,7 @@ def build_dnn_baseline(d):
     return model
 
 
-def build_dnn_wd(d, width, depth):
+def build_dnn_wd(d, width, depth, out_dim=2):
 
     assert depth >= 1
     assert width >= 1
@@ -228,7 +302,7 @@ def build_dnn_wd(d, width, depth):
     for _ in range(depth - 1):
         model.add(Dense(width, activation='relu'))
         model.add(BatchNormalization())
-    model.add(Dense(2, activation='linear'))
+    model.add(Dense(out_dim, activation='linear'))
     model.compile(loss=output_fn,
                   optimizer=keras.optimizers.Adam(lr=1e-4),
                   metrics=['accuracy'])
@@ -266,13 +340,17 @@ def gradient_model(model):
     return K.function([model.input, y_true, K.learning_phase()], grad)
 
 
-def gradient_fn(model):
+def gradient_fn(model, fn='softmax'):
     """Return gradient function of cross entropy loss w.r.t. input"""
 
     outdim = model.output.get_shape()[1].value
     y_true = K.placeholder(shape=(outdim, ))
-    loss = tf.nn.softmax_cross_entropy_with_logits_v2(
-        labels=y_true, logits=model.output)
+    if fn == 'softmax':
+        loss = tf.nn.softmax_cross_entropy_with_logits_v2(
+            labels=y_true, logits=model.output)
+    elif fn == 'mse':
+        # loss = tf.losses.mean_squared_error(y_true, model.output)
+        loss = tf.reduce_mean(tf.square(y_true - model.output),)
     grad = K.gradients(loss, model.input)
 
     return K.function([model.input, y_true, K.learning_phase()], grad)

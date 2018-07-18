@@ -80,7 +80,6 @@ class OptCarlini_GAN:
         self.target = target
         self.c = c
         self.lr = lr
-        self.init_scl = init_scl
         self.loss_op = loss_op
         self.k = k
         self.use_mask = use_mask
@@ -88,7 +87,7 @@ class OptCarlini_GAN:
 
         # Initialize variables
         self.latent_dim = model.get_input_at(0)[0].shape[1].value
-        init_val = np.random.normal(scale=init_scl, size=(1, self.latent_dim))
+        init_val = np.random.normal(0, init_scl, size=(1, self.latent_dim))
         self.x = K.placeholder(dtype='float32', shape=(1, self.latent_dim))
         self.y = K.placeholder(dtype='float32', shape=(1, OUTPUT_DIM))
         if self.use_mask:
@@ -130,7 +129,8 @@ class OptCarlini_GAN:
             raise ValueError("Invalid loss_op")
 
         # Regularization term with l2-norm
-        self.norm = tf.norm(self.d, ord='euclidean')
+        # self.norm = tf.norm(self.d, ord='euclidean')
+        self.norm = tf.sqrt(tf.reduce_sum(tf.square(self.d)))
 
         # Call a helper function to finalize and set up optimizer
         self._setup_opt()

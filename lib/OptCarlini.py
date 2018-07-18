@@ -2,12 +2,13 @@ from lib.keras_utils import *
 from lib.utils import *
 from parameters import *
 
-EPS = 1e-10   # Epsilon
+EPS = 1e-6   # Epsilon
 MIN_CP = -2.  # Minimum power index of c
 MAX_CP = 2.   # Maximum power index of c
 SCORE_THRES = 0.9  # Softmax score threshold to consider success of attacks
 PROG_PRINT_STEPS = 50  # Print progress every certain steps
-EARLYSTOP_STEPS = 5000  # Early stopping if no improvement for certain steps
+MIN_STEP = 200
+EARLYSTOP_STEPS = 100  # Early stopping if no improvement for certain steps
 
 
 class OptCarlini:
@@ -228,7 +229,7 @@ class OptCarlini:
                     sess.run(self.opt, feed_dict=feed_dict)
 
                 # Keep track of "best" solution
-                if self.loss_op == 0:
+                if self.loss_op == 0 and step > MIN_STEP:
                     norm = sess.run(self.norm, feed_dict=feed_dict)
                     loss = sess.run(self.loss, feed_dict=feed_dict)
                     # Save working adversarial example with smallest norm
@@ -242,7 +243,7 @@ class OptCarlini:
                             earlystop_count += 1
                             # Early stop if no improvement
                             if earlystop_count > EARLYSTOP_STEPS:
-                                print(step, min_norm)
+                                # print(step, min_norm)
                                 break
 
                 # Print progress
@@ -262,8 +263,8 @@ class OptCarlini:
                 x_adv = (x_ + d).reshape(IMG_SHAPE)
                 return x_adv, norm
 
-    def optimize_search(self, x, y, n_step=1000, search_step=10, prog=True,
-                        mask=None):
+    def optimize_search(self, x, y, weights_path, n_step=1000, search_step=10,
+                        prog=True, mask=None):
         """
         Run optimization attack, produce adversarial example from a single
         sample, x. Does binary search on log_10(c) to find optimal value of c.
@@ -310,7 +311,7 @@ class OptCarlini:
 
             # Run optimization with new c
             x_adv, norm = self.optimize(
-                x, y, n_step=n_step, prog=False, mask=mask)
+                x, y, weights_path, n_step=n_step, prog=False, mask=mask)
 
             # Evaluate result
             y_pred = self.model.predict(x_adv.reshape(INPUT_SHAPE))[0]

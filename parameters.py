@@ -24,7 +24,7 @@ from tensorflow.contrib.opt import ScipyOptimizerInterface
 
 # Set constants (MNIST)
 NUM_LABELS = 10                             # Number of labels
-BATCH_SIZE = 32                             # Size of batch
+BATCH_SIZE = 128                            # Size of batch
 HEIGHT = 28                                 # Height of input image
 WIDTH = 28                                  # Width of input image
 N_CHANNEL = 1                               # Number of channels
